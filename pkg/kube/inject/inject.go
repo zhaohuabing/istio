@@ -173,6 +173,7 @@ type SidecarTemplateData struct {
 	ProxyConfig    *meshconfig.ProxyConfig
 	MeshConfig     *meshconfig.MeshConfig
 	Values         map[string]interface{}
+	InjectEnvs     map[string]string
 }
 
 // Config specifies the sidecar injection configuration This includes
@@ -514,6 +515,7 @@ func InjectionData(params InjectionParameters, typeMetadata *metav1.TypeMeta, de
 		ProxyConfig:    meshConfig.GetDefaultConfig(),
 		MeshConfig:     meshConfig,
 		Values:         values,
+		InjectEnvs:     params.proxyEnvs,
 	}
 
 	funcMap := template.FuncMap{
