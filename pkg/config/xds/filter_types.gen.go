@@ -99,6 +99,7 @@ import (
 	_ "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/sni_cluster/v2"
 	_ "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/tcp_proxy/v2"
 	_ "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/thrift_proxy/v2alpha1"
+	_ "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/trpc_proxy/v3"
 	_ "github.com/envoyproxy/go-control-plane/envoy/config/filter/thrift/rate_limit/v2alpha1"
 	_ "github.com/envoyproxy/go-control-plane/envoy/config/filter/thrift/router/v2alpha1"
 	_ "github.com/envoyproxy/go-control-plane/envoy/config/filter/udp/udp_proxy/v2alpha"
