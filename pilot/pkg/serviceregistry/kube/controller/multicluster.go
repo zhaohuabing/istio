@@ -15,6 +15,7 @@
 package controller
 
 import (
+	"istio.io/istio/pilot/pkg/serviceregistry/serviceentry"
 	"strings"
 	"sync"
 	"time"
@@ -70,12 +71,14 @@ type Multicluster struct {
 	secretNamespace  string
 	secretController *secretcontroller.Controller
 	syncInterval     time.Duration
+	serviceEntryStore *serviceentry.ServiceEntryStore
 }
 
 // NewMulticluster initializes data structure to store multicluster information
 // It also starts the secret controller
 func NewMulticluster(kc kubernetes.Interface, secretNamespace string, opts Options,
-	serviceController *aggregate.Controller, xds model.XDSUpdater, networksWatcher mesh.NetworksWatcher) (*Multicluster, error) {
+	serviceController *aggregate.Controller, xds model.XDSUpdater, networksWatcher mesh.NetworksWatcher,
+	serviceEntryStore *serviceentry.ServiceEntryStore) (*Multicluster, error) {
 
 	remoteKubeController := make(map[string]*kubeController)
 	if opts.ResyncPeriod == 0 {
@@ -98,6 +101,7 @@ func NewMulticluster(kc kubernetes.Interface, secretNamespace string, opts Optio
 		secretNamespace:       secretNamespace,
 		endpointMode:          opts.EndpointMode,
 		syncInterval:          opts.GetSyncInterval(),
+		serviceEntryStore:     serviceEntryStore,
 	}
 	mc.initSecretController(kc)
 
@@ -137,6 +141,7 @@ func (m *Multicluster) AddMemberCluster(clients kubelib.Client, clusterID string
 	// Only need to add service handler for kubernetes registry as `initRegistryEventHandlers`,
 	// because when endpoints update `XDSUpdater.EDSUpdate` has already been called.
 	_ = kubectl.AppendServiceHandler(func(svc *model.Service, ev model.Event) { m.updateHandler(svc) })
+	_ = kubectl.AppendWorkloadHandler(m.serviceEntryStore.WorkloadInstanceHandler)
 
 	go kubectl.Run(stopCh)
 	webhookConfigName := strings.ReplaceAll(validationWebhookConfigNameTemplate, validationWebhookConfigNameTemplateVar, m.secretNamespace)
