@@ -100,6 +100,7 @@ func (pc *PodCache) onEvent(curr interface{}, ev model.Event) error {
 				// delete only if this pod was in the cache
 				if pc.podsByIP[ip] == key {
 					pc.deleteIP(ip)
+					ev = model.EventDelete
 				}
 			} else {
 				switch pod.Status.Phase {
@@ -113,6 +114,7 @@ func (pc *PodCache) onEvent(curr interface{}, ev model.Event) error {
 					// delete if the pod switched to other states and is in the cache
 					if pc.podsByIP[ip] == key {
 						pc.deleteIP(ip)
+						ev = model.EventDelete
 					}
 				}
 			}
