@@ -519,7 +519,7 @@ func (s *Server) initSDSServer(args *PilotArgs) {
 		} else {
 			s.addStartFunc(func(stop <-chan struct{}) error {
 				sc := kubesecrets.NewMulticluster(s.kubeClient, s.clusterID, args.RegistryOptions.ClusterRegistriesNamespace, stop)
-				sc.AddEventHandler(func(name, namespace string) {
+				sc.AddSecretHandler(func(name, namespace string) {
 					s.XDSServer.ConfigUpdate(&model.PushRequest{
 						Full: false,
 						ConfigsUpdated: map[model.ConfigKey]struct{}{

@@ -25,6 +25,8 @@ import (
 	"istio.io/pkg/log"
 )
 
+type secretHandler func(name string, namespace string)
+
 // Multicluster structure holds the remote kube Controllers and multicluster specific attributes.
 type Multicluster struct {
 	remoteKubeControllers map[string]*SecretsController
@@ -32,6 +34,7 @@ type Multicluster struct {
 	secretController      *secretcontroller.Controller
 	localCluster          string
 	stop                  <-chan struct{}
+	secretHandlers        []secretHandler
 }
 
 var _ secrets.MulticlusterController = &Multicluster{}
@@ -64,6 +67,9 @@ func (m *Multicluster) addMemberCluster(clients kube.Client, key string) {
 	sc := NewSecretsController(clients, key)
 	m.m.Lock()
 	m.remoteKubeControllers[key] = sc
+	for _, onCredential := range m.secretHandlers {
+		sc.AddEventHandler(onCredential)
+	}
 	m.m.Unlock()
 }
 
@@ -98,9 +104,10 @@ func (m *Multicluster) ForCluster(clusterID string) (secrets.Controller, error) 
 	return agg, nil
 }
 
-func (m *Multicluster) AddEventHandler(f func(name string, namespace string)) {
+func (m *Multicluster) AddSecretHandler(h secretHandler) {
+	m.secretHandlers = append(m.secretHandlers, h)
 	for _, c := range m.remoteKubeControllers {
-		c.AddEventHandler(f)
+		c.AddEventHandler(h)
 	}
 }
 
@@ -140,7 +147,5 @@ func (a *AggregateController) Authorize(serviceAccount, namespace string) error 
 }
 
 func (a *AggregateController) AddEventHandler(f func(name string, namespace string)) {
-	for _, c := range a.controllers {
-		c.AddEventHandler(f)
-	}
+	// no ops
 }
