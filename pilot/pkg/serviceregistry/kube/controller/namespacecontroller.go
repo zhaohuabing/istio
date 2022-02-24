@@ -16,6 +16,7 @@ package controller
 
 import (
 	"fmt"
+	"istio.io/istio/pilot/pkg/serviceregistry/kube/controller/filter"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -51,10 +52,16 @@ type NamespaceController struct {
 	configMapInformer  cache.SharedInformer
 	namespaceLister    listerv1.NamespaceLister
 	configmapLister    listerv1.ConfigMapLister
+
+	namespaceFilter filter.DiscoveryNamespacesFilter
 }
 
 // NewNamespaceController returns a pointer to a newly constructed NamespaceController instance.
-func NewNamespaceController(data func() map[string]string, kubeClient kube.Client) *NamespaceController {
+func NewNamespaceController(
+	data func() map[string]string,
+	kubeClient kube.Client,
+	options Options,
+) *NamespaceController {
 	c := &NamespaceController{
 		getData: data,
 		client:  kubeClient.CoreV1(),
@@ -65,55 +72,68 @@ func NewNamespaceController(data func() map[string]string, kubeClient kube.Clien
 	c.configmapLister = kubeClient.KubeInformer().Core().V1().ConfigMaps().Lister()
 	c.namespacesInformer = kubeClient.KubeInformer().Core().V1().Namespaces().Informer()
 	c.namespaceLister = kubeClient.KubeInformer().Core().V1().Namespaces().Lister()
+	c.namespaceFilter = filter.NewDiscoveryNamespacesFilter(c.namespaceLister, options.MeshWatcher.Mesh().DiscoverySelectors)
 
 	c.configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(_, obj interface{}) {
-			cm, err := convertToConfigMap(obj)
-			if err != nil {
-				log.Errorf("failed to convert to configmap: %v", err)
+			if c.namespaceFilter.Filter(obj) {
+				cm, err := convertToConfigMap(obj)
+				if err != nil {
+					log.Errorf("failed to convert to configmap: %v", err)
+				}
+				// This is a change to a configmap we don't watch, ignore it
+				if cm.Name != CACertNamespaceConfigMap {
+					return
+				}
+				c.queue.Push(func() error {
+					return c.configMapChange(cm)
+				})
 			}
-			// This is a change to a configmap we don't watch, ignore it
-			if cm.Name != CACertNamespaceConfigMap {
-				return
-			}
-			c.queue.Push(func() error {
-				return c.configMapChange(cm)
-			})
 		},
 		DeleteFunc: func(obj interface{}) {
-			cm, err := convertToConfigMap(obj)
-			if err != nil {
-				log.Errorf("failed to convert to configmap: %v", err)
-			}
-			// This is a change to a configmap we don't watch, ignore it
-			if cm.Name != CACertNamespaceConfigMap {
-				return
-			}
-			c.queue.Push(func() error {
-				ns, err := c.namespaceLister.Get(cm.Namespace)
+			if c.namespaceFilter.Filter(obj) {
+				cm, err := convertToConfigMap(obj)
 				if err != nil {
-					return err
+					log.Errorf("failed to convert to configmap: %v", err)
 				}
-				// If the namespace is terminating, we may get into a loop of trying to re-add the configmap back
-				// We should make sure the namespace still exists
-				if ns.Status.Phase != v1.NamespaceTerminating {
-					return c.insertDataForNamespace(cm.Namespace)
+				// This is a change to a configmap we don't watch, ignore it
+				if cm.Name != CACertNamespaceConfigMap {
+					return
 				}
-				return nil
-			})
+				c.queue.Push(func() error {
+					ns, err := c.namespaceLister.Get(cm.Namespace)
+					if err != nil {
+						return err
+					}
+					// If the namespace is terminating, we may get into a loop of trying to re-add the configmap back
+					// We should make sure the namespace still exists
+					if ns.Status.Phase != v1.NamespaceTerminating {
+						return c.insertDataForNamespace(cm.Namespace)
+					}
+					return nil
+				})
+			}
 		},
 	})
 
 	c.namespacesInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			c.queue.Push(func() error {
-				return c.namespaceChange(obj.(*v1.Namespace))
-			})
+			ns := obj.(*v1.Namespace)
+			if c.namespaceFilter.NamespaceCreated(ns.ObjectMeta) {
+				c.queue.Push(func() error {
+					return c.namespaceChange(ns)
+				})
+			}
 		},
-		UpdateFunc: func(_, obj interface{}) {
-			c.queue.Push(func() error {
-				return c.namespaceChange(obj.(*v1.Namespace))
-			})
+		UpdateFunc: func(old, new interface{}) {
+			oldNs := old.(*v1.Namespace)
+			newNs := new.(*v1.Namespace)
+			membershipChanged, namespaceAdded := c.namespaceFilter.NamespaceUpdated(oldNs.ObjectMeta, newNs.ObjectMeta)
+			if membershipChanged && namespaceAdded {
+				c.queue.Push(func() error {
+					return c.namespaceChange(newNs)
+				})
+			}
 		},
 	})
 
