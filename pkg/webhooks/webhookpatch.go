@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -52,6 +53,7 @@ type WebhookCertPatcher struct {
 	caCertPem   []byte
 
 	queue queue.Instance
+	meshID      string
 }
 
 // Run runs the WebhookCertPatcher
@@ -64,12 +66,14 @@ func (w *WebhookCertPatcher) Run(stopChan <-chan struct{}) {
 func NewWebhookCertPatcher(
 	client kubernetes.Interface,
 	revision, webhookName string, caBundle []byte) (*WebhookCertPatcher, error) {
+	meshID := os.Getenv("POD_NAMESPACE") //meshID 和 pod namespace 相同
 	return &WebhookCertPatcher{
 		client:      client,
 		revision:    revision,
 		webhookName: webhookName,
 		caCertPem:   caBundle,
 		queue:       queue.NewQueue(time.Second * 2),
+		meshID:      meshID,
 	}, nil
 }
 
@@ -104,6 +108,9 @@ func (w *WebhookCertPatcher) runWebhookController(stopChan <-chan struct{}) {
 
 func (w *WebhookCertPatcher) updateWebhookHandler(oldConfig, newConfig *v1.MutatingWebhookConfiguration) {
 	if oldConfig.ResourceVersion != newConfig.ResourceVersion {
+		if !strings.HasSuffix(oldConfig.Name, w.meshID) {
+			return
+		}
 		for i, wh := range newConfig.Webhooks {
 			if strings.HasSuffix(wh.Name, w.webhookName) && !bytes.Equal(newConfig.Webhooks[i].ClientConfig.CABundle, w.caCertPem) {
 				w.queue.Push(func() error {
@@ -116,6 +123,9 @@ func (w *WebhookCertPatcher) updateWebhookHandler(oldConfig, newConfig *v1.Mutat
 }
 
 func (w *WebhookCertPatcher) addWebhookHandler(config *v1.MutatingWebhookConfiguration) {
+	if !strings.HasSuffix(config.Name, w.meshID) {
+		return
+	}
 	for i, wh := range config.Webhooks {
 		if strings.HasSuffix(wh.Name, w.webhookName) && !bytes.Equal(config.Webhooks[i].ClientConfig.CABundle, w.caCertPem) {
 			log.Infof("New webhook config added, patching MutatingWebhookConfiguration for %s", config.Name)
