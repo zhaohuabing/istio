@@ -102,6 +102,7 @@ type SidecarTemplateData struct {
 	Spec                 corev1.PodSpec
 	ProxyConfig          *meshconfig.ProxyConfig
 	MeshConfig           *meshconfig.MeshConfig
+	InjectEnvs           map[string]string
 	Values               map[string]interface{}
 	Revision             string
 	EstimatedConcurrency int
@@ -403,6 +404,7 @@ func RunTemplate(params InjectionParameters) (mergedPod *corev1.Pod, templatePod
 		Spec:                 strippedPod.Spec,
 		ProxyConfig:          params.proxyConfig,
 		MeshConfig:           meshConfig,
+		InjectEnvs:           params.proxyEnvs,
 		Values:               params.valuesConfig.asMap,
 		Revision:             params.revision,
 		EstimatedConcurrency: estimateConcurrency(params.proxyConfig, metadata.Annotations, params.valuesConfig.asStruct),
