@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	v1 "k8s.io/api/admissionregistration/v1"
@@ -37,6 +38,8 @@ import (
 	"istio.io/istio/pkg/webhooks/util"
 	"istio.io/pkg/log"
 )
+
+const namespaceHosted = "namespace-hosted"
 
 var (
 	errWrongRevision     = errors.New("webhook does not belong to target revision")
@@ -59,6 +62,9 @@ type WebhookCertPatcher struct {
 	CABundleWatcher *keycertbundle.Watcher
 
 	informer cache.SharedIndexInformer
+
+	meshID   string
+	meshType string
 }
 
 // NewWebhookCertPatcher creates a WebhookCertPatcher
@@ -70,6 +76,8 @@ func NewWebhookCertPatcher(
 		revision:        revision,
 		webhookName:     webhookName,
 		CABundleWatcher: caBundleWatcher,
+		meshID:          os.Getenv("MESH_ID"),
+		meshType:        os.Getenv("MESH_TYPE"),
 	}
 	p.queue = controllers.NewQueue("webhook patcher",
 		controllers.WithReconciler(p.webhookPatchTask),
@@ -119,6 +127,10 @@ func (w *WebhookCertPatcher) webhookPatchTask(o types.NamespacedName) error {
 func (w *WebhookCertPatcher) patchMutatingWebhookConfig(
 	client admissionregistrationv1client.MutatingWebhookConfigurationInterface,
 	webhookConfigName string) error {
+	// 对应 namespaceHosted 类型的 mesh，只处理本 mesh 相关的 webhook
+	if w.meshType == namespaceHosted && !strings.HasSuffix(webhookConfigName, w.meshID) {
+		return nil
+	}
 	raw, _, err := w.informer.GetIndexer().GetByKey(webhookConfigName)
 	if raw == nil || err != nil {
 		reportWebhookPatchFailure(webhookConfigName, reasonWebhookConfigNotFound)
