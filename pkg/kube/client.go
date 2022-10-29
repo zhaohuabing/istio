@@ -128,6 +128,15 @@ type Client interface {
 	// KubeInformer returns an informer for core kube client
 	KubeInformer() informers.SharedInformerFactory
 
+	// FilteredPodInformer returns an informer for core kube client for pods
+	FilteredPodInformer() PodInformer
+
+	// FilteredEndpointsInformer returns an informer for core kube client for endpoints
+	FilteredEndpointsInformer() EndpointsInformer
+
+	// FilteredServiceInformer returns an informer for core kube client for endpoints
+	FilteredServiceInformer() ServiceInformer
+
 	// DynamicInformer returns an informer for dynamic client
 	DynamicInformer() dynamicinformer.DynamicSharedInformerFactory
 
@@ -323,8 +332,11 @@ type client struct {
 	extSet      kubeExtClient.Interface
 	extInformer kubeExtInformers.SharedInformerFactory
 
-	kube         kubernetes.Interface
-	kubeInformer informers.SharedInformerFactory
+	kube                      kubernetes.Interface
+	kubeInformer              informers.SharedInformerFactory
+	filteredPodInformer       PodInformer
+	filteredEndpointsInformer EndpointsInformer
+	filteredServiceInformer   ServiceInformer
 
 	dynamic         dynamic.Interface
 	dynamicInformer dynamicinformer.DynamicSharedInformerFactory
@@ -389,6 +401,15 @@ func newClientInternal(clientFactory util.Factory, revision string) (*client, er
 		return nil, err
 	}
 	c.kubeInformer = informers.NewSharedInformerFactory(c.Interface, resyncInterval)
+	c.filteredPodInformer = &FilteredPodInformer{
+		factory: c.KubeInformer(),
+	}
+	c.filteredEndpointsInformer = &FilteredEndpointsInformer{
+		factory: c.KubeInformer(),
+	}
+	c.filteredServiceInformer = &FilteredServiceInformer{
+		factory: c.KubeInformer(),
+	}
 
 	c.metadata, err = metadata.NewForConfig(c.config)
 	if err != nil {
@@ -474,6 +495,18 @@ func (c *client) GatewayAPI() gatewayapiclient.Interface {
 
 func (c *client) KubeInformer() informers.SharedInformerFactory {
 	return c.kubeInformer
+}
+
+func (c *client) FilteredPodInformer() PodInformer {
+	return c.filteredPodInformer
+}
+
+func (c *client) FilteredEndpointsInformer() EndpointsInformer {
+	return c.filteredEndpointsInformer
+}
+
+func (c *client) FilteredServiceInformer() ServiceInformer {
+	return c.filteredServiceInformer
 }
 
 func (c *client) DynamicInformer() dynamicinformer.DynamicSharedInformerFactory {

@@ -189,7 +189,7 @@ func (c *Controller) handleDeselectedNamespace(kubeClient kubelib.Client, endpoi
 
 	// for each resource type, issue delete events for objects in the delabled namespace
 
-	services, err := kubeClient.KubeInformer().Core().V1().Services().Lister().Services(ns).List(labels.Everything())
+	services, err := kubeClient.FilteredServiceInformer().Lister().Services(ns).List(labels.Everything())
 	if err != nil {
 		log.Errorf("error listing services: %v", err)
 		return
@@ -198,7 +198,7 @@ func (c *Controller) handleDeselectedNamespace(kubeClient kubelib.Client, endpoi
 		errs = multierror.Append(errs, c.onServiceEvent(svc, model.EventDelete))
 	}
 
-	pods, err := kubeClient.KubeInformer().Core().V1().Pods().Lister().Pods(ns).List(labels.Everything())
+	pods, err := kubeClient.FilteredPodInformer().Lister().Pods(ns).List(labels.Everything())
 	if err != nil {
 		log.Errorf("error listing pods: %v", err)
 		return
@@ -209,7 +209,7 @@ func (c *Controller) handleDeselectedNamespace(kubeClient kubelib.Client, endpoi
 
 	switch endpointMode {
 	case EndpointsOnly:
-		endpoints, err := kubeClient.KubeInformer().Core().V1().Endpoints().Lister().Endpoints(ns).List(labels.Everything())
+		endpoints, err := kubeClient.FilteredEndpointsInformer().Lister().Endpoints(ns).List(labels.Everything())
 		if err != nil {
 			log.Errorf("error listing endpoints: %v", err)
 			return

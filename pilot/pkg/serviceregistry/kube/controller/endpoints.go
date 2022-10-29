@@ -39,7 +39,7 @@ var _ kubeEndpointsController = &endpointsController{}
 func newEndpointsController(c *Controller) *endpointsController {
 	informer := filter.NewFilteredSharedIndexInformer(
 		c.opts.DiscoveryNamespacesFilter.Filter,
-		c.client.KubeInformer().Core().V1().Endpoints().Informer(),
+		c.client.FilteredEndpointsInformer().Informer(),
 	)
 	out := &endpointsController{
 		kubeEndpoints: kubeEndpoints{

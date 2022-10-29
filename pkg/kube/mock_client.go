@@ -115,6 +115,22 @@ func (c MockClient) KubeInformer() informers.SharedInformerFactory {
 	panic("not used in mock")
 }
 
+func (c MockClient) KubePodInformer() informers.SharedInformerFactory {
+	panic("not used in mock")
+}
+
+func (c MockClient) FilteredPodInformer() PodInformer {
+	panic("not used in mock")
+}
+
+func (c MockClient) FilteredEndpointsInformer() EndpointsInformer {
+	panic("not used in mock")
+}
+
+func (c MockClient) FilteredServiceInformer() ServiceInformer {
+	panic("not used in mock")
+}
+
 func (c MockClient) DynamicInformer() dynamicinformer.DynamicSharedInformerFactory {
 	panic("not used in mock")
 }

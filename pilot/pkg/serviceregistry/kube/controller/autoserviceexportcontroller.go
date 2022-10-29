@@ -64,8 +64,7 @@ func newAutoServiceExportController(opts autoServiceExportOptions) *autoServiceE
 	}
 
 	log.Infof("%s starting controller", c.logPrefix())
-
-	c.serviceInformer = opts.Client.KubeInformer().Core().V1().Services().Informer()
+	c.serviceInformer = opts.Client.FilteredServiceInformer().Informer()
 	c.serviceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) { c.onServiceAdd(obj) },
 
