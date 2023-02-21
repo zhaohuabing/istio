@@ -2,10 +2,9 @@ package kube
 
 import (
 	"context"
+	"istio.io/istio/pkg/util"
 	"istio.io/pkg/log"
-	"os"
 	"strconv"
-	"strings"
 	time "time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -35,19 +34,6 @@ type FilteredServiceInformer struct {
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredServiceInformer(client kubernetes.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	meshID := os.Getenv("MESH_ID")
-	meshType := os.Getenv("MESH_TYPE")
-	nsList, _ := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "tcm.cloud.tencent.com/managed-by=" + meshID,
-	})
-	log.Infof("meshID:" + meshID)
-	log.Infof("meshType:" + meshType)
-	allNs := ""
-	for _, ns := range nsList.Items {
-		allNs = allNs + ns.Name
-	}
-
-	log.Infof("all ns:" + allNs)
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -55,27 +41,41 @@ func NewFilteredServiceInformer(client kubernetes.Interface, namespace string, r
 					tweakListOptions(&options)
 				}
 
-				if strings.ToLower(meshType) == "namespace_hosted" {
+				if util.IsNamespaceHosted() {
 					serviceList := &corev1.ServiceList{
 						Items: []corev1.Service{},
 					}
+					nsList, err := getManagedNSList(client)
+					if err != nil {
+						return nil, err
+					}
 					for _, ns := range nsList.Items {
-						singleNsServiceList, _ := client.CoreV1().Services(ns.Name).List(context.TODO(), options)
+						singleNsServiceList, err := client.CoreV1().Services(ns.Name).List(context.TODO(), options)
+						if err != nil {
+							return nil, err
+						}
 						serviceList.Items = append(serviceList.Items, singleNsServiceList.Items...)
 					}
 					log.Infof("list length " + strconv.Itoa(len(serviceList.Items)))
 					return serviceList, nil
 				}
-				serviceList, _ := client.CoreV1().Services(namespace).List(context.TODO(), options)
-				return serviceList, nil
+				serviceList, err := client.CoreV1().Services(namespace).List(context.TODO(), options)
+				return serviceList, err
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
 
-				w, _ := client.CoreV1().Services(namespace).Watch(context.TODO(), options)
-				if strings.ToLower(meshType) == "namespace_hosted" {
+				w, err := client.CoreV1().Services(namespace).Watch(context.TODO(), options)
+				if err != nil {
+					return nil, err
+				}
+				if util.IsNamespaceHosted() {
+					nsList, err := getManagedNSList(client)
+					if err != nil {
+						return nil, err
+					}
 					return watch.Filter(w, func(in watch.Event) (watch.Event, bool) {
 						if service, ok := in.Object.(*corev1.Service); ok {
 							for _, ns := range nsList.Items {

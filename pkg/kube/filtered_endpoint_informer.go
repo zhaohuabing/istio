@@ -2,10 +2,9 @@ package kube
 
 import (
 	"context"
+	"istio.io/istio/pkg/util"
 	"istio.io/pkg/log"
-	"os"
 	"strconv"
-	"strings"
 	time "time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -34,19 +33,6 @@ type FilteredEndpointsInformer struct {
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredEndpointsInformer(client kubernetes.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	meshID := os.Getenv("MESH_ID")
-	meshType := os.Getenv("MESH_TYPE")
-	nsList, _ := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "tcm.cloud.tencent.com/managed-by=" + meshID,
-	})
-	log.Infof("meshID:" + meshID)
-	log.Infof("meshType:" + meshType)
-	allNs := ""
-	for _, ns := range nsList.Items {
-		allNs = allNs + ns.Name
-	}
-
-	log.Infof("all ns:" + allNs)
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -54,27 +40,41 @@ func NewFilteredEndpointsInformer(client kubernetes.Interface, namespace string,
 					tweakListOptions(&options)
 				}
 
-				if strings.ToLower(meshType) == "namespace_hosted" {
+				if util.IsNamespaceHosted() {
 					endpointsList := &corev1.EndpointsList{
 						Items: []corev1.Endpoints{},
 					}
+					nsList, err := getManagedNSList(client)
+					if err != nil {
+						return nil, err
+					}
 					for _, ns := range nsList.Items {
-						singleNsEndpointsList, _ := client.CoreV1().Endpoints(ns.Name).List(context.TODO(), options)
+						singleNsEndpointsList, err := client.CoreV1().Endpoints(ns.Name).List(context.TODO(), options)
+						if err != nil {
+							return nil, err
+						}
 						endpointsList.Items = append(endpointsList.Items, singleNsEndpointsList.Items...)
 					}
 					log.Infof("list length " + strconv.Itoa(len(endpointsList.Items)))
 					return endpointsList, nil
 				}
-				endpointsList, _ := client.CoreV1().Endpoints(namespace).List(context.TODO(), options)
-				return endpointsList, nil
+				endpointsList, err := client.CoreV1().Endpoints(namespace).List(context.TODO(), options)
+				return endpointsList, err
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
 
-				w, _ := client.CoreV1().Endpoints(namespace).Watch(context.TODO(), options)
-				if strings.ToLower(meshType) == "namespace_hosted" {
+				w, err := client.CoreV1().Endpoints(namespace).Watch(context.TODO(), options)
+				if err != nil {
+					return nil, err
+				}
+				if util.IsNamespaceHosted() {
+					nsList, err := getManagedNSList(client)
+					if err != nil {
+						return nil, err
+					}
 					return watch.Filter(w, func(in watch.Event) (watch.Event, bool) {
 						if endpoints, ok := in.Object.(*corev1.Endpoints); ok {
 							for _, ns := range nsList.Items {
@@ -95,6 +95,18 @@ func NewFilteredEndpointsInformer(client kubernetes.Interface, namespace string,
 		resyncPeriod,
 		indexers,
 	)
+}
+
+func getManagedNSList(client kubernetes.Interface) (*corev1.NamespaceList, error) {
+	nsList, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: "tcm.cloud.tencent.com/managed-by=" + util.MeshID(),
+	})
+	allNs := ""
+	for _, ns := range nsList.Items {
+		allNs = allNs + ns.Name + " "
+	}
+	log.Infof("all ns:" + allNs)
+	return nsList, err
 }
 
 func (f *FilteredEndpointsInformer) defaultInformer(client kubernetes.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {

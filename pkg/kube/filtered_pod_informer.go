@@ -2,10 +2,9 @@ package kube
 
 import (
 	"context"
+	"istio.io/istio/pkg/util"
 	"istio.io/pkg/log"
-	"os"
 	"strconv"
-	"strings"
 	time "time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -35,19 +34,6 @@ type FilteredPodInformer struct {
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredPodInformer(client kubernetes.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	meshID := os.Getenv("MESH_ID")
-	meshType := os.Getenv("MESH_TYPE")
-	nsList, _ := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "tcm.cloud.tencent.com/managed-by=" + meshID,
-	})
-	log.Infof("meshID:" + meshID)
-	log.Infof("meshType:" + meshType)
-	allNs := ""
-	for _, ns := range nsList.Items {
-		allNs = allNs + ns.Name
-	}
-
-	log.Infof("all ns:" + allNs)
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -55,27 +41,41 @@ func NewFilteredPodInformer(client kubernetes.Interface, namespace string, resyn
 					tweakListOptions(&options)
 				}
 
-				if strings.ToLower(meshType) == "namespace_hosted" {
+				if util.IsNamespaceHosted() {
 					podList := &corev1.PodList{
 						Items: []corev1.Pod{},
 					}
+					nsList, err := getManagedNSList(client)
+					if err != nil {
+						return nil, err
+					}
 					for _, ns := range nsList.Items {
-						singleNsPodList, _ := client.CoreV1().Pods(ns.Name).List(context.TODO(), options)
+						singleNsPodList, err := client.CoreV1().Pods(ns.Name).List(context.TODO(), options)
+						if err != nil {
+							return nil, err
+						}
 						podList.Items = append(podList.Items, singleNsPodList.Items...)
 					}
 					log.Infof("list length " + strconv.Itoa(len(podList.Items)))
 					return podList, nil
 				}
-				podList, _ := client.CoreV1().Pods(namespace).List(context.TODO(), options)
-				return podList, nil
+				podList, err := client.CoreV1().Pods(namespace).List(context.TODO(), options)
+				return podList, err
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
 
-				w, _ := client.CoreV1().Pods(namespace).Watch(context.TODO(), options)
-				if strings.ToLower(meshType) == "namespace_hosted" {
+				w, err := client.CoreV1().Pods(namespace).Watch(context.TODO(), options)
+				if err != nil {
+					return nil, err
+				}
+				if util.IsNamespaceHosted() {
+					nsList, err := getManagedNSList(client)
+					if err != nil {
+						return nil, err
+					}
 					return watch.Filter(w, func(in watch.Event) (watch.Event, bool) {
 						if pod, ok := in.Object.(*corev1.Pod); ok {
 							for _, ns := range nsList.Items {
