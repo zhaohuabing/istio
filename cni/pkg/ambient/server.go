@@ -172,8 +172,12 @@ func (s *Server) ReconcileZtunnel() error {
 	log.Infof("active ztunnel updated to %v", activePod.Name)
 	// TODO: we should not cleanup and recreate; this has downtime. We should mutate the existing rules in place
 	s.cleanup()
+
+	log.Infof("xxxxxx before getDeviceWithDestinationOf")
 	veth, err := getDeviceWithDestinationOf(activePod.Status.PodIP)
+	log.Infof("xxxxxx after getDeviceWithDestinationOf")
 	if err != nil {
+		log.Errorf("xxxxxx failed to get device: %v", err)
 		return fmt.Errorf("failed to get device: %v", err)
 	}
 

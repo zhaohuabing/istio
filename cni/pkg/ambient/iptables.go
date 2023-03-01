@@ -84,7 +84,7 @@ func (s *Server) IptablesCmd() string {
 // Initialize the chains and lists for ztunnel
 func (s *Server) initializeLists() error {
 	var err error
-
+	log.Infof("xxxxxxxxxxxxx initializeLists----")
 	list := []*ExecList{
 		newExec(s.IptablesCmd(),
 			[]string{"-t", constants.TableNat, "-N", constants.ChainZTunnelPrerouting}),
@@ -124,6 +124,32 @@ func (s *Server) initializeLists() error {
 			} else {
 				log.Errorf("Error running command %v (can safely ignore chain exist errors): %v", l.Cmd, err)
 			}
+		}
+	}
+
+	//exclue the tke management plane ip range from the default policy
+	const tkeManagementPlaneIPRange = "169.254.0.0/16,172.16.252.1/32,172.16.0.13/32,172.16.255.108/32"
+	list = []*ExecList{
+		newExec(s.IptablesCmd(),
+			[]string{"-t", constants.TableNat, "-I", constants.ChainZTunnelPrerouting, "-d", tkeManagementPlaneIPRange, "-j", "RETURN"}),
+		newExec(s.IptablesCmd(),
+			[]string{"-t", constants.TableNat, "-I", constants.ChainZTunnelPostrouting, "-d", tkeManagementPlaneIPRange, "-j", "RETURN"}),
+		newExec(s.IptablesCmd(),
+			[]string{"-t", constants.TableMangle, "-I", constants.ChainZTunnelPrerouting, "-d", tkeManagementPlaneIPRange, "-j", "RETURN"}),
+		newExec(s.IptablesCmd(),
+			[]string{"-t", constants.TableMangle, "-I", constants.ChainZTunnelPostrouting, "-d", tkeManagementPlaneIPRange, "-j", "RETURN"}),
+		newExec(s.IptablesCmd(),
+			[]string{"-t", constants.TableMangle, "-I", constants.ChainZTunnelOutput, "-d", tkeManagementPlaneIPRange, "-j", "RETURN"}),
+		newExec(s.IptablesCmd(),
+			[]string{"-t", constants.TableMangle, "-I", constants.ChainZTunnelInput, "-d", tkeManagementPlaneIPRange, "-j", "RETURN"}),
+		newExec(s.IptablesCmd(),
+			[]string{"-t", constants.TableMangle, "-I", constants.ChainZTunnelForward, "-d", tkeManagementPlaneIPRange, "-j", "RETURN"}),
+	}
+
+	for _, l := range list {
+		err = execute(l.Cmd, l.Args...)
+		if err != nil {
+			log.Errorf("Error running command %v : %v", l.Cmd, err)
 		}
 	}
 

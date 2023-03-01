@@ -106,9 +106,6 @@ spec:
             ip link del p$INBOUND_TUN
             ip link del p$OUTBOUND_TUN
             set -e
-{{- if not (.Capabilities.KubeVersion.GitVersion | contains "-eks") }}
-            HOST_IP=$(ip route | grep default | awk '{print $3}')
-{{- end }}
 
             ip link add name p$INBOUND_TUN type geneve id 1000 remote $HOST_IP
             ip addr add $ZTUNNEL_INBOUND_TUN_IP/$TUN_PREFIX dev p$INBOUND_TUN

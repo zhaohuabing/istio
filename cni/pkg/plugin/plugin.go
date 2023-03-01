@@ -177,7 +177,7 @@ func CmdAdd(args *skel.CmdArgs) (err error) {
 			log.Error("Failed to configure istio-cni with UDS log")
 		}
 	}
-	log.FindScope("default").SetOutputLevel(getLogLevel(conf.LogLevel))
+	log.FindScope("default").SetOutputLevel(log.DebugLevel)
 
 	var loggedPrevResult any
 	if conf.PrevResult == nil {
