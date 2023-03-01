@@ -35,11 +35,10 @@ import (
 	"istio.io/istio/pilot/pkg/keycertbundle"
 	kubelib "istio.io/istio/pkg/kube"
 	"istio.io/istio/pkg/kube/controllers"
+	istioutil "istio.io/istio/pkg/util"
 	"istio.io/istio/pkg/webhooks/util"
 	"istio.io/pkg/log"
 )
-
-const namespaceHosted = "namespace-hosted"
 
 var (
 	errWrongRevision     = errors.New("webhook does not belong to target revision")
@@ -128,7 +127,7 @@ func (w *WebhookCertPatcher) patchMutatingWebhookConfig(
 	client admissionregistrationv1client.MutatingWebhookConfigurationInterface,
 	webhookConfigName string) error {
 	// 对应 namespaceHosted 类型的 mesh，只处理本 mesh 相关的 webhook
-	if w.meshType == namespaceHosted && !strings.HasSuffix(webhookConfigName, w.meshID) {
+	if istioutil.IsNamespaceHosted() && !strings.HasSuffix(webhookConfigName, w.meshID) {
 		return nil
 	}
 	raw, _, err := w.informer.GetIndexer().GetByKey(webhookConfigName)
