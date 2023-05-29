@@ -30,7 +30,7 @@ import (
 	"istio.io/pkg/log"
 )
 
-var serverCaLog = log.RegisterScope("serverca", "Citadel server log", 0)
+var serverCaLog = log.RegisterScope("ca", "Citadel server log", 0)
 
 // CertificateAuthority contains methods to be supported by a CA.
 type CertificateAuthority interface {
@@ -82,6 +82,7 @@ func (s *Server) CreateCertificate(ctx context.Context, request *pb.IstioCertifi
 	var signErr error
 	var cert []byte
 	var respCertChain []string
+	serverCaLog.Debugf("generating a cert for %v", certOpts.SubjectIDs)
 	if certSigner == "" {
 		cert, signErr = s.ca.Sign([]byte(request.Csr), certOpts)
 	} else {
