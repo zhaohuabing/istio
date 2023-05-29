@@ -173,6 +173,7 @@ func (s *CAServer) CreateCertificate(ctx context.Context, request *pb.IstioCerti
 		}
 		id = caller.Identities
 	}
+
 	cert, err := s.sign([]byte(request.Csr), id, time.Duration(request.ValidityDuration)*time.Second, false)
 	if err != nil {
 		caServerLog.Errorf("failed to sign CSR: %+v", err)
@@ -194,6 +195,7 @@ func (s *CAServer) sign(csrPEM []byte, subjectIDs []string, _ time.Duration, for
 		return nil, caerror.NewError(caerror.CSRError, err)
 	}
 	signingCert, signingKey, _, _ := s.KeyCertBundle.GetAll()
+	caServerLog.Infof("signing cert for %v with %s", csr, signingCert.Subject.CommonName)
 	certBytes, err := util.GenCertFromCSR(csr, signingCert, csr.PublicKey, *signingKey, subjectIDs, s.certLifetime, forCA)
 	if err != nil {
 		caServerLog.Errorf("failed to generate cert from CSR: %+v", err)
